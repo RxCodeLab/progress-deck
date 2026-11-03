@@ -1,0 +1,6 @@
+# decks and images made while trying the templates
+*.pptx
+*.pdf
+img/
+node_modules/
+__pycache__/
