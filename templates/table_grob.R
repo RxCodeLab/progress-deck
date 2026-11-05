@@ -11,7 +11,7 @@ table_png <- function(df, file, notes = NULL, base_size = 18, family = "Arial", 
   df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
   df[] <- lapply(df, function(x) if (is.numeric(x)) formatC(x, big.mark = ",", format = if (all(x == round(x), na.rm = TRUE)) "d" else "g") else as.character(x))
   hj <- if (is.null(align)) c(0, rep(1, ncol(df) - 1)) else align
-  xx <- ifelse(hj == 0, 0.02, 0.96)
+  xx <- ifelse(hj == 0, 0.02, 0.995)   # right-aligned text near the cell's right edge, so a header as wide as its column stays inside it
   tt <- ttheme_minimal(base_size = base_size, base_family = family, padding = unit(c(14, 12), "pt"),
     core = list(fg_params = list(hjust = rep(hj, each = nrow(df)), x = rep(xx, each = nrow(df)), col = ink), bg_params = list(fill = NA)),
     colhead = list(fg_params = list(hjust = hj, x = xx, col = ink, fontface = "bold"), bg_params = list(fill = NA)))

@@ -1,12 +1,19 @@
-# Cumulative incidence (1 - Kaplan-Meier), 95% CIs and unweighted numbers at risk, in Okabe-Ito colours (blue, vermilion, ...) unless
-# `colours` is given: dark enough for a projector and distinguishable with red-green colour blindness.
+# Cumulative incidence (1 - Kaplan-Meier), 95% CIs and unweighted numbers at risk, in Okabe-Ito colours (blue, vermilion, ...)
+# unless `colours` is given. The first two have 5.2:1 and 3.9:1 contrast on white and stay apart with red-green colour
+# blindness; the later ones are lighter, so give more than two groups different `linetypes` as well.
 #   source("cum_incidence.R")
-#   cum_incidence_png(time, event, group, "img/incidence.png", times = 0:5)
-#   source("table_grob.R"); table_png(cum_incidence_diff(time, event, group, 1:5), "img/difference.png")
-# Times use the same units as time; ymax is a proportion. The first group is the target/treated arm.
-# With weights, CIs use the robust variance, clustered on `cluster` (for example the matched set) when given, else per person.
-# The Wald CI assumes independent groups; when the analysis has its own CIs (bootstrap, matched pairs),
-# put those in the table instead. digits = NULL gives one decimal, or two when every risk is under 5%. Estimates at times beyond follow-up carry the last estimate forward.
+#   cum_incidence_png(time, event, group, "img/incidence.png", times = 0:5, xlab = "Years")
+#   source("table_grob.R"); table_png(cum_incidence_diff(time, event, group, 1:5, time_name = "Year"), "img/difference.png")
+# Times use the same units as time; ymax is a proportion. The first factor level is the target/treated arm: a numeric 0/1
+# group sorts 0 first, so pass factor(treatment, levels = c(1, 0)). Curves stop at each group's last follow-up time, and
+# the difference table gives NA beyond it.
+# 1 - Kaplan-Meier is the cumulative incidence of a single event type. With competing risks (for example death before the
+# outcome), use the Aalen-Johansen estimator instead (survfit with a multistate factor as the event; survival's "compete"
+# vignette). For model-standardised curves, draw the analysis's own estimates.
+# With weights or a cluster, CIs use the robust variance, clustered on `cluster` (for example the matched set) when given.
+# The difference CI is a Wald interval that assumes independent groups. Matched groups are not independent: when the
+# analysis has its own CIs (bootstrap over matched sets, for example), put those in the table instead.
+# digits = NULL gives one decimal, or two when every risk is under 5%.
 suppressPackageStartupMessages({ library(survival); library(ggplot2); library(grid); library(gridExtra); library(gtable) })
 
 .cum_incidence_fit <- function(time, event, group, weights, labels, cluster = NULL) {
@@ -26,7 +33,8 @@ suppressPackageStartupMessages({ library(survival); library(ggplot2); library(gr
     if (length(labels) != length(lev) || anyNA(labels)) stop("Supply one display label per group level.")
   }
   d <- data.frame(time = time, event = as.integer(event), group = group)
-  if (is.null(weights)) fit <- survfit(Surv(time, event) ~ group, data = d, conf.int = 0.95) else {
+  if (is.null(weights) && is.null(cluster)) fit <- survfit(Surv(time, event) ~ group, data = d, conf.int = 0.95) else {
+    if (is.null(weights)) weights <- rep(1, n)
     if (!is.numeric(weights) || length(weights) != n || any(!is.finite(weights) | weights < 0) ||
         any(tapply(weights, group, sum) <= 0)) stop("weights must be finite, nonnegative, and have a positive sum in each group.")
     if (!is.null(cluster) && (length(cluster) != n || anyNA(cluster))) stop("cluster must have one nonmissing value per person.")
@@ -42,7 +50,7 @@ suppressPackageStartupMessages({ library(survival); library(ggplot2); library(gr
 }
 
 cum_incidence_png <- function(time, event, group, file, weights = NULL, cluster = NULL, labels = NULL, times = NULL,
-                              xlab = "Years", ylab = "Cumulative incidence", ymax = NULL, colours = NULL, linetypes = NULL,
+                              xlab = "Time", ylab = "Cumulative incidence", ymax = NULL, colours = NULL, linetypes = NULL,
                               width = 7, height = 5.3, base_size = 16, family = "Arial", res = 220) {
   z <- .cum_incidence_fit(time, event, group, weights, labels, cluster)
   if (is.null(times)) times <- pretty(c(0, if (max(time) > 0) max(time) else 1), n = 5)
@@ -53,8 +61,9 @@ cum_incidence_png <- function(time, event, group, file, weights = NULL, cluster 
     f <- z$fit[i]
     d <- data.frame(time = c(0, f$time), incidence = c(0, 1 - f$surv),
                     lower = c(0, 1 - f$upper), upper = c(0, 1 - f$lower))
-    d <- d[d$time <= xmax, ]
-    if (tail(d$time, 1) < xmax) d <- rbind(d, transform(tail(d, 1), time = xmax))
+    end <- min(xmax, max(z$time[z$group == z$levels[i]]))   # stop at the group's last follow-up
+    d <- d[d$time <= end, ]
+    if (tail(d$time, 1) < end) d <- rbind(d, transform(tail(d, 1), time = end))
     d$group <- factor(z$levels[i], levels = z$levels)
     d
   })
@@ -111,17 +120,23 @@ cum_incidence_png <- function(time, event, group, file, weights = NULL, cluster 
   invisible(list(file = file, fit = z$fit))
 }
 
-cum_incidence_diff <- function(time, event, group, times, weights = NULL, cluster = NULL, labels = NULL, digits = NULL) {
+cum_incidence_diff <- function(time, event, group, times, weights = NULL, cluster = NULL, labels = NULL, digits = NULL,
+                               time_name = "Time") {
   z <- .cum_incidence_fit(time, event, group, weights, labels, cluster)
   times <- .cum_incidence_times(times)
-  summaries <- lapply(seq_along(z$levels), function(i) summary(z$fit[i], times = times, extend = TRUE))
+  summaries <- lapply(seq_along(z$levels), function(i) {
+    s <- summary(z$fit[i], times = times, extend = TRUE)
+    beyond <- times > max(z$time[z$group == z$levels[i]])   # not followed that long: no estimate
+    for (k in c("surv", "lower", "upper", "std.err")) s[[k]][beyond] <- NA
+    s
+  })
   if (is.null(digits)) {   # one decimal, or two when every risk in the table is under 5% (one would round them to 0.x)
-    top <- max(vapply(summaries, function(s) max(1 - s$lower, na.rm = TRUE), numeric(1)))
+    top <- max(vapply(summaries, function(s) max(c(0, 1 - s$lower), na.rm = TRUE), numeric(1)))
     digits <- if (top < 0.05) 2 else 1
   }
   num <- function(x) sub("^-(0(\\.0*)?)$", "\\1", sprintf("%.*f", digits, 100 * x))   # no "-0.0"
-  fmt <- function(est, lower, upper) paste0(num(est), " (", num(lower), " to ", num(upper), ")")
-  out <- data.frame(Year = times, check.names = FALSE)
+  fmt <- function(est, lower, upper) ifelse(is.na(est), "NA", paste0(num(est), " (", num(lower), " to ", num(upper), ")"))
+  out <- data.frame(times, check.names = FALSE); names(out) <- time_name
   for (i in seq_along(summaries)) {
     s <- summaries[[i]]
     out[[i + 1]] <- fmt(1 - s$surv, 1 - s$upper, 1 - s$lower)
@@ -131,7 +146,7 @@ cum_incidence_diff <- function(time, event, group, times, weights = NULL, cluste
     difference <- b$surv - a$surv
     # summary.survfit supplies survival-scale SEs for both ordinary and robust fits.
     half <- qnorm(0.975) * sqrt(a$std.err^2 + b$std.err^2)
-    out[["Difference (95% CI), percentage points"]] <- fmt(difference, difference - half, difference + half)
+    out[[paste0(z$labels[1], " minus ", z$labels[2], " (95% CI), percentage points")]] <- fmt(difference, difference - half, difference + half)
   }
   names(out)[seq_along(z$labels) + 1] <- paste0(z$labels, " (95% CI), %")
   out
@@ -142,12 +157,12 @@ if (sys.nframe() == 0) {   # Rscript cum_incidence.R: made-up data, with follow-
   n <- 2000
   group <- factor(rep(c("Treated", "Control"), each = n / 2), levels = c("Treated", "Control"))
   failure <- rexp(n, rate = ifelse(group == "Treated", 0.04, 0.06))
-  censor <- runif(n, 0, 5)
+  censor <- pmin(runif(n, 1, 8), 5)   # administrative end at 5 years
   time <- pmin(failure, censor); event <- as.integer(failure <= censor)
-  cum_incidence_png(time, event, group, "img/demo_cum_incidence.png", times = 0:5)
+  cum_incidence_png(time, event, group, "img/demo_cum_incidence.png", times = 0:5, xlab = "Years")
   script <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1])
   source(file.path(dirname(normalizePath(script)), "table_grob.R"))
-  table_png(cum_incidence_diff(time, event, group, 1:5), "img/demo_cum_incidence_diff.png",
+  table_png(cum_incidence_diff(time, event, group, 1:5, time_name = "Year"), "img/demo_cum_incidence_diff.png",
             notes = "Made-up data; independent-group Wald CI.")
   cat("wrote img/demo_cum_incidence.png\nwrote img/demo_cum_incidence_diff.png\n")
 }

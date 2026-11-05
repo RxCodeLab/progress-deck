@@ -17,9 +17,10 @@ case "$cmd" in
     deck=$(realpath "$1"); name=$(basename "$deck" .pptx)
     out=$(realpath -m "${2:-${TMPDIR:-/tmp}/progress-deck-check/$name}"); mkdir -p "$out"
     "${PY[@]}" check "$deck" "$out/$name.md"
-    # Anthropic's pptx skill validator, if that skill is installed here (it is not part of this repository)
-    v=$(ls "$HOME"/.claude/skills/synced/*/pptx/scripts/office/validate.py "$HOME"/.claude/skills/pptx/scripts/office/validate.py 2>/dev/null | head -1 || true)
-    if [ -n "$v" ]; then uv run -q --no-project --python 3.12 --with lxml --with defusedxml python "$v" "$deck" | tail -n 1; fi
+    # Anthropic's pptx skill validator, if that skill is installed here (it is not part of this repository); PPTX_VALIDATOR overrides
+    v=${PPTX_VALIDATOR:-$(ls "$HOME"/.claude/skills/synced/*/pptx/scripts/office/validate.py "$HOME"/.claude/skills/pptx/scripts/office/validate.py 2>/dev/null | head -1 || true)}
+    if [ -n "$v" ]; then uv run -q --no-project --python 3.12 --with lxml --with defusedxml python "$v" "$deck" | tail -n 1
+    else echo "pptx validator not found: not run (set PPTX_VALIDATOR to its validate.py)"; fi
     soffice=$(ls "$DECK_HOME"/libreoffice/opt/libreoffice*/program/soffice 2>/dev/null | head -1 || true)
     if [ -n "$soffice" ]; then
       timeout 600 "$soffice" -env:UserInstallation="file://$DECK_HOME/lo-profile" --headless --convert-to pdf --outdir "$out" "$deck" >/dev/null 2>&1

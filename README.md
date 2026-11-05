@@ -1,6 +1,6 @@
 # progress-deck
 
-A Claude Code skill for research progress decks built from R output: package plots, tables rendered in R and design diagrams, placed on 16:9 slides with [pptxgenjs](https://github.com/gitbrent/PptxGenJS), with almost no written text. `SKILL.md` holds the rules and the workflow that Claude follows. Figures follow the written rules of Annals of Internal Medicine (cumulative incidence curves with numbers at risk, risk-difference tables, flow diagrams by reporting guideline); `references/annals_figures.md` has the rules with quotes and sources, and examples from recent Annals papers.
+A Claude Code skill for research progress decks built from R output: package plots, tables rendered in R and design diagrams, placed on 16:9 slides with [pptxgenjs](https://github.com/gitbrent/PptxGenJS), with almost no written text. `SKILL.md` holds the rules and the workflow that Claude follows. Figures follow the target journal's written rules; for clinical and epidemiological studies with no journal named, the skill uses those of Annals of Internal Medicine (cumulative incidence curves with numbers at risk, risk-difference tables, flow diagrams by reporting guideline). `references/annals_figures.md` has the rules with quotes and sources and examples from recent Annals papers, and `references/curve_colours.md` a survey of curve colours in five journals.
 
 ## Install on a server
 
@@ -9,11 +9,11 @@ git clone https://github.com/rxcodelab/progress-deck.git ~/.claude/skills/progre
 bash ~/.claude/skills/progress-deck/scripts/setup.sh
 ```
 
-The setup needs no sudo. It installs into `~/.local/share/progress-deck`, and you can change that location with `PROGRESS_DECK_HOME`. It needs:
+The setup runs on Linux (x86-64 or aarch64) and needs no sudo. It installs Node packages and LibreOffice into `~/.local/share/progress-deck`, and you can change that location with `PROGRESS_DECK_HOME`; uv keeps Python and its packages in its own cache. It needs:
 
 - **Node 20.9 or later**, which sharp requires. It installs pptxgenjs and sharp from npm.
 - **[uv](https://docs.astral.sh/uv/).** uv fetches Python 3.12, python-pptx and pypdfium2 for the checks.
-- **R** with ggplot2, ragg, gridExtra, gtable and survival, for the templates.
+- **R** with ggplot2 (3.5.0 or later), ragg, gridExtra, gtable and survival, for the templates.
 
 It also downloads and unpacks LibreOffice, which is used only to render previews. Set `SKIP_LIBREOFFICE=1` to skip it, or `LO_TARBALL=<file>` to use a tarball you already have.
 
@@ -47,4 +47,4 @@ MIT (see `LICENSE`). Third-party software is not included in this repository. `s
 | gridExtra | GPL-2 or later |
 | survival | LGPL-2 or later |
 
-`deck.sh check` also runs the validator from Anthropic's `pptx` skill when that skill is installed on the machine. That validator is proprietary and is not part of this repository.
+`deck.sh check` also runs the validator from Anthropic's `pptx` skill when it finds that skill under `~/.claude/skills/` (or at `PPTX_VALIDATOR`). That validator is proprietary and is not part of this repository.
