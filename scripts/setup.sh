@@ -94,11 +94,11 @@ fi
 
 # --- R packages used by the templates ---------------------------------------------------------------------------
 if command -v Rscript >/dev/null; then
-  if Rscript -e 'm <- Filter(function(p) !requireNamespace(p, quietly = TRUE), c("ggplot2", "ragg", "gridExtra", "gtable"));
+  if Rscript -e 'm <- Filter(function(p) !requireNamespace(p, quietly = TRUE), c("ggplot2", "ragg", "gridExtra", "gtable", "survival"));
                  if (length(m)) { cat("  FAIL  missing R packages:", m, "\n"); quit(status = 1) }
-                 cat("  ok    R packages: ggplot2, ragg, gridExtra, gtable\n")'; then :; else failed=1; fi
+                 cat("  ok    R packages: ggplot2, ragg, gridExtra, gtable, survival\n")'; then :; else failed=1; fi
 else
-  fail "Rscript not found: the templates need R with ggplot2, ragg, gridExtra and gtable"
+  fail "Rscript not found: the templates need R with ggplot2, ragg, gridExtra, gtable and survival"
 fi
 
 if [ "$failed" = 1 ]; then echo "setup incomplete: fix the FAIL lines and rerun"; exit 1; fi

@@ -8,9 +8,10 @@ license: MIT
 
 A progress deck here is a set of slides that shows an analysis to an advisor or collaborators through its R output: the plots and tables the R packages produce, placed on slides with a title line and, where needed, a source line. The output carries the evidence; written sentences on the slides invite debate about wording instead of the results, so the slides hold almost none.
 
-The skill has four parts:
+The skill has five parts:
 - `lib/deck_lib.js` places R images on 16:9 slides (pptxgenjs);
-- `templates/` has R code for slide tables and design diagrams, plus an example build script;
+- `templates/` has R code for slide tables, design diagrams and cumulative incidence curves, plus an example build script;
+- `references/annals_figures.md` holds the Annals of Internal Medicine figure rules and examples from its papers;
 - `scripts/setup.sh` installs the toolchain per server without sudo;
 - `scripts/deck.sh` builds a deck and checks it, rendering every slide to PNG.
 
@@ -27,7 +28,7 @@ It installs pptxgenjs and sharp, unpacks LibreOffice (previews only) and warms u
 These come from repeated feedback on real decks. Each has a reason; keep the reason in mind when a case is not covered.
 
 1. **R output, not sentences.** Fill slides with the R results themselves. At most a short title, and a subtitle only when it carries a needed fact (a window, a population size). Numbers computed elsewhere (SQL or Python counts) are turned into a table or plot in R before they go on a slide.
-2. **Package graphs and tables as they come.** Kaplan-Meier, propensity-score and balance plots from the package that fitted the model (for example CohortMethod `plotKaplanMeier`, `plotPs`, `plotCovariateBalanceScatterPlot`), Table 1 from `createCmTable1`, forest plots from an R package (`meta::forest`). Never redraw a data graph as PowerPoint shapes or a native chart; a redrawn graph can drift from the analysis, a package graph cannot.
+2. **Package graphs and tables as they come.** Propensity-score and balance plots from the package that fitted the model (for example CohortMethod `plotKaplanMeier`, `plotPs`, `plotCovariateBalanceScatterPlot`), Table 1 from `createCmTable1`, forest plots from an R package (`meta::forest`). Never redraw a data graph as PowerPoint shapes or a native chart; a redrawn graph can drift from the analysis, a package graph cannot. The exception is the survival curve: `plotKaplanMeier` only draws falling survival, so time-to-event results are drawn as cumulative incidence in R from the same population and weights (rule 13).
 3. **A table when a chart adds nothing.** A list of numbers per item (group sizes, counts per design, estimates per outcome) goes in a table rendered in R (`templates/table_grob.R`), not a dot or bar chart. Charts are for what a table cannot show at a glance, such as how N falls step by step.
 4. **Design diagrams in R, black and grey.** Inclusion and exclusion criteria as a design diagram (time on the x-axis around day 0, one box per criterion over its assessment window; Schneeweiss S et al., Ann Intern Med 2019;170:398-406) from `templates/design_diagram.R`, PNG for slides and PDF for a paper. Flow diagrams are drawn in R too.
 5. **Plain names, not internal codes.** Name each analysis by what it studies ("Drug A start vs no start, disease X"), never by working codes such as B1, S3, v4 or design numbers. The audience has never seen the codes.
@@ -38,12 +39,19 @@ These come from repeated feedback on real decks. Each has a reason; keep the rea
 10. **Real counts.** Show counts as they are: no "<5", no masking, no complementary suppression, no rounding sizes to 5, unless the user says a data-use agreement requires it. Analysis rules are different (for example no hazard ratio with fewer than 10 events); state them and still show the counts.
 11. **Plain design.** White slides, including the title slide, black text in one font (Arial), a grey subtitle and source line, and nothing else: no dark title slides, colour accents, small-caps section tags, boxes, pills or decorative shapes. A styled template looks generated and pulls attention away from the R output.
 12. **Any text gets a humanizer pass.** Titles, labels and captions go through the `humanizer` skill when it is installed, and the deck's language follows the user's request.
+13. **Figures follow Annals of Internal Medicine.** Deck figures often end up in the paper, so they are drawn to that journal's written rules from the start (`references/annals_figures.md` has the rules, quotes and examples from recent Annals papers; follow another journal's rules when the user names it):
+    - time-to-event results go in two R outputs from `templates/cum_incidence.R`. The first is a rising cumulative incidence curve on a narrow y-axis from 0, with the numbers at risk by group and time below the x-axis. The second is a table of absolute differences with 95% CIs at fixed times;
+    - no pie charts, no 3-D graphics, no bars without a measure of variability;
+    - ratios go on a log axis with a line at 1, differences on a linear axis with a line at 0;
+    - every abbreviation and symbol is explained under the figure;
+    - the flow diagram comes first, following CONSORT for a trial, TARGET for a trial emulation and STROBE or RECORD for other observational studies.
 
 ## Workflow
 
 1. **Export from R.** One PNG per figure or table, white background, written with `ragg::agg_png` (or `ggsave(..., device = ragg::agg_png)`) at about 220 dpi into one or more image folders. Use unique file names across folders; the library keys images by file name. Draw each figure at the size it should have on the slide. The figure area under a title is about 12.3 x 5.3 in, or half that width for two figures side by side. The library reads the PNG's resolution and never enlarges a figure past its drawn size, so text keeps the point size R drew it with. Shrinking to fit is allowed.
    - For tables: `source("<skill-dir>/templates/table_grob.R"); table_png(df, "img/name.png", notes = ...)`.
    - For a design diagram: `source("<skill-dir>/templates/design_diagram.R"); design_diagram(rows, entry, file = "img/design")`.
+   - For a time-to-event outcome: `source("<skill-dir>/templates/cum_incidence.R"); cum_incidence_png(time, event, group, "img/ci_x.png", weights = w, times = 0:5)` and `table_png(cum_incidence_diff(time, event, group, times = 1:5, weights = w), "img/ci_x_diff.png")`. From a CohortMethod population, `time` is `survivalTime / 365.25`, `event` is `outcomeCount > 0` and `group` is `treatment` (1 first). With variable-ratio matching, the weight is 1 for the treated and n treated / n comparator within the stratum for each comparator, as in `plotKaplanMeier`. With IPTW or overlap weights, use those weights.
    - For a long package table that will not fit as one PNG, such as `createCmTable1` with 80 rows, save it with `write.csv` and place it with `csvTable`.
 2. **Write the build script.** Copy `templates/build_example.js` next to the image folders and edit it. The library API is below.
 3. **Build:** `<skill-dir>/scripts/deck.sh build build_deck.js`.
