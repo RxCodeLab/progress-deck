@@ -1,9 +1,10 @@
-# Cumulative incidence (1 - Kaplan-Meier), 95% CIs and unweighted numbers at risk, in Okabe-Ito colours (blue, vermilion, ...)
-# unless `colours` is given. The first two have 5.2:1 and 3.9:1 contrast on white and stay apart with red-green colour
+# Cumulative incidence (1 - Kaplan-Meier), 95% CIs and unweighted numbers at risk, in Okabe-Ito colours (vermilion for the first group, the target arm, then blue, ...)
+# unless `colours` is given. The first two have 3.9:1 and 5.2:1 contrast on white and stay apart with red-green colour
 # blindness; the later ones are lighter, so give more than two groups different `linetypes` as well.
 #   source("cum_incidence.R")
 #   cum_incidence_png(time, event, group, "img/incidence.png", times = 0:5, xlab = "Years")
-#   source("table_grob.R"); table_png(cum_incidence_diff(time, event, group, 1:5, time_name = "Year"), "img/difference.png")
+#   source("table_grob.R"); tab <- cum_incidence_diff(time, event, group, 1:5, time_name = "Year")
+#   table_png(tab, "img/difference.png", notes = attr(tab, "note"))   # the note says which group minus which
 # Times use the same units as time; ymax is a proportion. The first factor level is the target/treated arm: a numeric 0/1
 # group sorts 0 first, so pass factor(treatment, levels = c(1, 0)). Curves stop at each group's last follow-up time, and
 # the difference table gives NA beyond it.
@@ -77,7 +78,7 @@ cum_incidence_png <- function(time, event, group, file, weights = NULL, cluster 
   if (is.null(ymax)) ymax <- min(1, tail(pretty(c(0, max(curve$upper, curve$incidence, 0.01, na.rm = TRUE)), n = 4), 1))
   if (length(ymax) != 1 || !is.finite(ymax) || ymax <= 0 || ymax > 1) stop("ymax must be a proportion in (0, 1].")
   # Okabe-Ito order unless colours are given (for example colours = c("black", "black"), linetypes = c("solid", "dashed") for print)
-  if (is.null(colours)) colours <- rep(c("#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#000000"), length.out = ng)
+  if (is.null(colours)) colours <- rep(c("#D55E00", "#0072B2", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#000000"), length.out = ng)
   if (length(colours) < ng) stop("Supply one colour per group.")
   colours <- colours[seq_len(ng)]
   types <- if (is.null(linetypes)) rep("solid", ng) else rep(linetypes, length.out = ng)
@@ -121,7 +122,7 @@ cum_incidence_png <- function(time, event, group, file, weights = NULL, cluster 
 }
 
 cum_incidence_diff <- function(time, event, group, times, weights = NULL, cluster = NULL, labels = NULL, digits = NULL,
-                               time_name = "Time") {
+                               time_name = "Time", ci_newline = TRUE) {
   z <- .cum_incidence_fit(time, event, group, weights, labels, cluster)
   times <- .cum_incidence_times(times)
   summaries <- lapply(seq_along(z$levels), function(i) {
@@ -134,8 +135,9 @@ cum_incidence_diff <- function(time, event, group, times, weights = NULL, cluste
     top <- max(vapply(summaries, function(s) max(c(0, 1 - s$lower), na.rm = TRUE), numeric(1)))
     digits <- if (top < 0.05) 2 else 1
   }
-  num <- function(x) sub("^-(0(\\.0*)?)$", "\\1", sprintf("%.*f", digits, 100 * x))   # no "-0.0"
-  fmt <- function(est, lower, upper) ifelse(is.na(est), "NA", paste0(num(est), " (", num(lower), " to ", num(upper), ")"))
+  num <- function(x) sub("^-", "\u2212", sub("^-(0(\\.0*)?)$", "\\1", sprintf("%.*f", digits, 100 * x)))   # minus signs, no "-0.0"
+  sep <- if (ci_newline) "\n(" else " ("
+  fmt <- function(est, lower, upper) ifelse(is.na(est), "NA", paste0(num(est), sep, num(lower), " to ", num(upper), ")"))
   out <- data.frame(times, check.names = FALSE); names(out) <- time_name
   for (i in seq_along(summaries)) {
     s <- summaries[[i]]
@@ -146,9 +148,10 @@ cum_incidence_diff <- function(time, event, group, times, weights = NULL, cluste
     difference <- b$surv - a$surv
     # summary.survfit supplies survival-scale SEs for both ordinary and robust fits.
     half <- qnorm(0.975) * sqrt(a$std.err^2 + b$std.err^2)
-    out[[paste0(z$labels[1], " minus ", z$labels[2], " (95% CI), percentage points")]] <- fmt(difference, difference - half, difference + half)
+    out[["Difference\npoints (95% CI)"]] <- fmt(difference, difference - half, difference + half)
+    attr(out, "note") <- paste0("Difference: ", z$labels[1], " minus ", z$labels[2], ", in percentage points.")
   }
-  names(out)[seq_along(z$labels) + 1] <- paste0(z$labels, " (95% CI), %")
+  names(out)[seq_along(z$labels) + 1] <- paste0(z$labels, "\n% (95% CI)")
   out
 }
 
@@ -162,7 +165,7 @@ if (sys.nframe() == 0) {   # Rscript cum_incidence.R: made-up data, with follow-
   cum_incidence_png(time, event, group, "img/demo_cum_incidence.png", times = 0:5, xlab = "Years")
   script <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1])
   source(file.path(dirname(normalizePath(script)), "table_grob.R"))
-  table_png(cum_incidence_diff(time, event, group, 1:5, time_name = "Year"), "img/demo_cum_incidence_diff.png",
-            notes = "Made-up data; independent-group Wald CI.")
+  tab <- cum_incidence_diff(time, event, group, 1:5, time_name = "Year")
+  table_png(tab, "img/demo_cum_incidence_diff.png", notes = c(attr(tab, "note"), "Made-up data; independent-group Wald CI."))
   cat("wrote img/demo_cum_incidence.png\nwrote img/demo_cum_incidence_diff.png\n")
 }
